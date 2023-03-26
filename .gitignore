@@ -1,0 +1,7 @@
+
+*.xml
+*.txt
+*/.idea/*
+*/res/*
+*/venv/*
+*/__pycache__/*
