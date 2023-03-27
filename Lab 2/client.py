@@ -1,19 +1,43 @@
 import socket
-import threading
+import sys
+import select
 
-from msgprocess import message_in, message_out
+if len(sys.argv) != 3:
+    print("Incorrect parameters.\n Correct pattern: script_path, IP address, port number")
+    exit()
 
-HOST = "192.168.41.136"
-PORT = 9090
 
-with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
-    client.connect((HOST, PORT))
-    print(f"Connected to {(HOST, PORT)}")
-    in_thread = threading.Thread(target=message_in, args=(client,), daemon=True)
-    out_thread = threading.Thread(target=message_out, args=(client, "Client",), daemon=True)
-    in_thread.start()
-    out_thread.start()
-    while out_thread.is_alive() and in_thread.is_alive():
-        pass
+def main():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+        host, port = str(sys.argv[1]), int(sys.argv[2])
+        input_list = [sys.stdin, client]
+        if not client.connect_ex((host, port)):
+            try:
+                while True:
+                    read_input, _, _ = select.select(input_list, [], [])
+                    for ipt in read_input:
+                        if ipt == client:
+                            message = client.recv(1024).decode('utf-8')
+                            if message != "%end":
+                                print(message)
+                            else:
+                                raise StopIteration
+                        else:
+                            sys.stdout.flush()
+                            message = input()
+                            try:
+                                client.send(message.encode('utf-8'))
+                            except socket.error as err:
+                                print(f"Error while sending data to client: {str(err)}")
+                                raise StopIteration
+            except StopIteration:
+                pass
+        else:
+            print("There's no server here")
 
-print("Session ended")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("Interrupted manually")
