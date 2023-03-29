@@ -1,32 +1,33 @@
 import socket
-import sys
+import struct
 import threading
 
-if len(sys.argv) != 3:
-    print("Incorrect parameters.\n Correct pattern: script_path, IP address, port number")
-    exit()
-
 clients = []
+addr = []
 
 
 def client_thread(conn, addr):
-    conn.send("Connected to the chat!".encode('utf-8'))
+    message = "Connected to the chat!".encode('utf-16')
+    conn.send(struct.pack("<I", len(message)) + message)
     while True:
         try:
-            message = conn.recv(1024).decode('utf-8')
+            message, size = bytes(), struct.unpack("<I", conn.recv(4))[0]
+            while len(message) < size:
+                message += conn.recv(size - len(message))
+            message = message.decode('utf-16')
         except socket.error as err:
             print(f"Error while receiving data from client: {str(err)}")
             remove(conn)
             break
         else:
-            if message != "%end":
+            if message != "@exit":
                 message = f"<{addr}> {message}"
                 print(message)
-                broadcast(message.encode('utf-8'), conn)
+                broadcast(message.encode('utf-16'), conn)
             else:
                 print(f"<{addr}> exited")
-                conn.send("%end".encode('utf-8'))
-                broadcast(f"<{addr}> exited".encode('utf-8'), conn)
+                conn.send("@exit".encode('utf-16'))
+                broadcast(f"<{addr}> exited".encode('utf-16'), conn)
                 remove(conn)
                 break
 
@@ -35,7 +36,7 @@ def broadcast(message, conn):
     for client in clients:
         if client != conn:
             try:
-                client.send(message)
+                client.send(struct.pack("<I", len(message)) + message)
             except socket.error as err:
                 print(f"Error while sending data to client: {str(err)}")
                 client.close()
@@ -51,15 +52,33 @@ def main():
     try:
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
             server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            host, port = str(sys.argv[1]), int(sys.argv[2])
+            host, port = str(input("Enter server's IP address: ")), int(input("Enter server's port: "))
             if not server.bind((host, port)):
                 print("Port is open, connected")
                 server.listen(100)
-                while True:
-                    connection, address = server.accept()
-                    clients.append(connection)
-                    print(f"{address} connected")
-                    threading.Thread(target=client_thread, args=(connection, address,), daemon=True).start()
+                try:
+                    while True:
+                        try:
+                            connection, address = server.accept()
+                        except socket.timeout:
+                            pass
+                        except KeyboardInterrupt:
+                            clients_temp = list(clients)
+                            for conn, address in zip(clients_temp, addr):
+                                print(f"<{address}> exited")
+                                conn.send(struct.pack("<I", len("@exit".encode('utf-16'))) + "@exit".encode('utf-16'))
+                                broadcast(f"<{address}> exited".encode('utf-16'), conn)
+                            for conn, address in zip(clients_temp, addr):
+                                remove(conn)
+                                addr.remove(address)
+                            break
+                        else:
+                            clients.append(connection)
+                            addr.append(address)
+                            print(f"{address} connected")
+                            threading.Thread(target=client_thread, args=(connection, address,), daemon=True).start()
+                except StopIteration:
+                    pass
             else:
                 print("Port is not open")
     except socket.error as err:
@@ -67,7 +86,4 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("Interrupted manually")
+    main()

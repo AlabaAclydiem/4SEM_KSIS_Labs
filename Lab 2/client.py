@@ -1,43 +1,51 @@
 import socket
 import sys
 import select
-
-if len(sys.argv) != 3:
-    print("Incorrect parameters.\n Correct pattern: script_path, IP address, port number")
-    exit()
+import struct
 
 
 def main():
-    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
-        host, port = str(sys.argv[1]), int(sys.argv[2])
-        input_list = [sys.stdin, client]
-        if not client.connect_ex((host, port)):
-            try:
-                while True:
-                    read_input, _, _ = select.select(input_list, [], [])
-                    for ipt in read_input:
-                        if ipt == client:
-                            message = client.recv(1024).decode('utf-8')
-                            if message != "%end":
-                                print(message)
+    try:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client:
+            input_list = [sys.stdin, client]
+            host, port = str(input("Enter server's IP address: ")), int(input("Enter server's port: "))
+            if not client.connect_ex((host, port)):
+                try:
+                    while True:
+                        read_input, _, _ = select.select(input_list, [], [])
+                        for ipt in read_input:
+                            if ipt == client:
+                                try:
+                                    message, size = bytes(), struct.unpack("<I", client.recv(4))[0]
+                                    while len(message) < size:
+                                        message += client.recv(size - len(message))
+                                    message = message.decode('utf-16')
+                                except socket.error as err:
+                                    print(f"Error while receiving data from server: {str(err)}")
+                                    raise StopIteration
+                                else:
+                                    if message != "@exit":
+                                        print(message)
+                                    else:
+                                        raise StopIteration
                             else:
-                                raise StopIteration
-                        else:
-                            sys.stdout.flush()
-                            message = input()
-                            try:
-                                client.send(message.encode('utf-8'))
-                            except socket.error as err:
-                                print(f"Error while sending data to client: {str(err)}")
-                                raise StopIteration
-            except StopIteration:
-                pass
-        else:
-            print("There's no server here")
+                                message = input()
+                                try:
+                                    client.send(struct.pack("<I", len(message.encode("utf-16"))) +
+                                                message.encode('utf-16'))
+                                except socket.error as err:
+                                    print(f"Error while sending data to server: {str(err)}")
+                                    raise StopIteration
+                                else:
+                                    if message == "@exit":
+                                        raise StopIteration
+                except (StopIteration, KeyboardInterrupt):
+                    client.send(struct.pack("<I", len("@exit".encode("utf-16"))) + "@exit".encode('utf-16'))
+            else:
+                print("There's no server here")
+    except socket.error as err:
+        print(f"Error while creating socket: {str(err)}")
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except KeyboardInterrupt:
-        print("Interrupted manually")
+    main()
