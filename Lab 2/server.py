@@ -60,8 +60,6 @@ def main():
                     while True:
                         try:
                             connection, address = server.accept()
-                        except socket.timeout:
-                            pass
                         except KeyboardInterrupt:
                             clients_temp = list(clients)
                             for conn, address in zip(clients_temp, addr):
