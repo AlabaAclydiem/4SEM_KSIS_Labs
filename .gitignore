@@ -5,3 +5,5 @@
 */res/*
 */venv/*
 */__pycache__/*
+*/server_directory/*
+*/client_directory/*
