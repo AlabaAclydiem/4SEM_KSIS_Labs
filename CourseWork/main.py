@@ -1,4 +1,6 @@
-from scanner import Scanner
+from program import Program
 
 if __name__ == "__main__":
-    print("Just worked!")
+    program = Program()
+    program.run()
+
